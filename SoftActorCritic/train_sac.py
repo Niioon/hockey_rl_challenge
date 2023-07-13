@@ -15,7 +15,7 @@ def main():
 
     # TRAIN DEFENSE
     env = h_env.HockeyEnv(mode=h_env.HockeyEnv.TRAIN_DEFENSE)
-    losses, stats = train_agent(sac_agent, env, mode='train_defense', max_episodes=500)
+    losses, stats = train_agent(sac_agent, env, mode='train_defense', max_episodes=10)
     env.close()
 
     plot_loss_rewards(stats, losses, title='Losses and Rewards for Defense Training')
@@ -58,7 +58,7 @@ def train_agent(agent, env, mode='normal', max_episodes=1000):
             if done:
                 break
         for j in range(update_steps):
-            losses.extend(agent.update())
+            losses.append(list(agent.update()))
         stats.append([i, total_reward, t + 1])
 
         if (i - 1) % 20 == 0:
@@ -70,22 +70,36 @@ def plot_loss_rewards(stats, losses, title=' ', kernel_size=25):
     stats_np = np.asarray(stats)
     rewards = stats_np[:, 1]
     kernel = np.ones(kernel_size) / kernel_size
-    kernel_rewards = np.ones(100)/100
+    kernel_rewards = np.ones(100) / 100
     # smooth rewards
     rewards_smooth = np.convolve(rewards, kernel_rewards, mode='same')
-    losses_np = np.asarray(losses)
+    losses_q1 = np.asarray(losses)[:, 0]
+    losses_q2 = np.asarray(losses)[:, 1]
+    losses_actor = np.asarray(losses)[:, 2]
     # smooth losses
-    losses_smooth = np.convolve(losses_np, kernel, mode='same')
+    losses_smooth_q1 = np.convolve(losses_q1, kernel, mode='same')
+    losses_smooth_q2 = np.convolve(losses_q2, kernel, mode='same')
 
-    fig, axes = plt.subplots(1, 2, figsize=(14, 4))
+    losses_smooth_actor = np.convolve(losses_actor, kernel, mode='same')
+
+    fig, axes = plt.subplots(2, 2, figsize=(14, 8))
     fig.suptitle(title)
-    axes[0].plot(rewards_smooth)
-    axes[0].set_ylabel('total_reward')
-    axes[0].set_xlabel('num_episodes')
 
-    axes[1].plot(losses_smooth)
-    axes[0].set_xlabel('num_episodes')
-    axes[1].set_ylabel('l1 loss')
+    axes[0, 0].plot(rewards_smooth)
+    axes[0, 0].set_ylabel('total_reward')
+    axes[0, 0].set_xlabel('num_episodes')
+
+    axes[0, 1].plot(losses_smooth_actor)
+    axes[0, 1].set_xlabel('num_train_steps')
+    axes[0, 1].set_ylabel('actor loss')
+
+    axes[1, 0].plot(losses_smooth_q1)
+    axes[1, 0].set_xlabel('num_train_steps')
+    axes[1, 0].set_ylabel('q1 loss')
+
+    axes[1, 1].plot(losses_smooth_q2)
+    axes[1, 1].set_xlabel('num_train_steps')
+    axes[1, 1].set_ylabel('q2 loss')
 
     plt.show()
 
