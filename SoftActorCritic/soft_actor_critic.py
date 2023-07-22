@@ -1,5 +1,4 @@
 import memory as mem
-from feedforward import Feedforward
 import torch
 from torch import nn
 import numpy as np
@@ -21,19 +20,23 @@ class SacAgent(object):
         #     raise UnsupportedSpace('Action space {} incompatible with {}.' \
         #                            ' (Reqire Discrete.)'.format(action_space, self))
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = 'cpu'
 
         self._observation_space = observation_space
         self._observation_dim = observation_space.shape[0]
         self._action_space = action_space
         # divide n_action by 2 because env expects actions for 2 players
         self._action_n = int(action_space.shape[0]/2)
+
+        self.eval = False
+
         self._config = {
             "eps": 0.05,
             "discount": 0.95,
             "alpha": 0.2,
             "buffer_size": int(1e5),
-            "batch_size": 128,
+            "batch_size": 256,
             "learning_rate": 0.0002,
             "target_update_interval": 20,
             "tau": 0.005
@@ -83,9 +86,20 @@ class SacAgent(object):
     def store_transition(self, transition):
         self.buffer.add_transition(transition)
 
+    def set_eval(self):
+        self.eval = True
+
+    def set_train(self):
+        self.eval = False
+
     def select_action(self, state):
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
-        action, _, _ = self.actor.sample(state)
+        if not eval:
+            action, _, _ = self.actor.sample(state)
+        else:
+            _, _, action = self.actor.sample(state)
+            # action, _, _ = self.actor.sample(state)
+
         return action.detach().cpu().numpy()[0]
 
     def update(self):

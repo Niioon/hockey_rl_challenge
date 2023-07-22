@@ -1,4 +1,3 @@
-from feedforward import Feedforward
 import torch
 from torch import nn
 import numpy as np
