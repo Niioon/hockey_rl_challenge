@@ -11,7 +11,7 @@ class CriticNetwork(nn.Module):
     implements two parallel running q-networks
     """
 
-    def __init__(self, observation_dim, action_dim,
+    def __init__(self, observation_dim, action_dim, device,
                  hidden_sizes=[128, 128]):
         super(CriticNetwork, self).__init__()
 
@@ -24,6 +24,9 @@ class CriticNetwork(nn.Module):
         self.q_2 = torch.nn.ModuleList([torch.nn.Linear(i, o) for i, o in zip(layer_sizes[:-1], layer_sizes[1:])])
         # output layer does not have an activation function
         self.activations = [torch.nn.ReLU() for _ in self.q_1[:-1]]
+
+        if device.type == 'cuda':
+            self.cuda()
 
     def forward(self, state, action):
 
@@ -46,7 +49,7 @@ class ActorNetwork(nn.Module):
     The actor network represents the policy and computes a probability distribution over actions for a given state.
     """
 
-    def __init__(self, observation_dim, action_dim,
+    def __init__(self, observation_dim, action_dim, device,
                  hidden_sizes=[128, 128], action_space=None, learning_rate=0.0002):
 
         super(ActorNetwork, self).__init__()
@@ -54,6 +57,8 @@ class ActorNetwork(nn.Module):
         self.input_size = observation_dim
         self.hidden_sizes = hidden_sizes
         self.output_size = action_dim
+
+        self.device = device
 
         self.epsilon = 1e-6
 
@@ -67,19 +72,23 @@ class ActorNetwork(nn.Module):
         self.mean = nn.Linear(hidden_sizes[-1], self.output_size)
         self.log_std = nn.Linear(hidden_sizes[-1], self.output_size)
 
+        if device.type == 'cuda':
+            self.cuda()
+
         self.loss = torch.nn.SmoothL1Loss()
 
         # action rescaling, needed if action space is not [-1, 1], scales action space using linear transformation
         if action_space is None:
-            self.action_scale = torch.tensor(1.)
-            self.action_bias = torch.tensor(0.)
+            self.action_scale = torch.tensor(1.).to(self.device)
+            self.action_bias = torch.tensor(0.).to(self.device)
         else:
             self.action_scale = torch.FloatTensor(
-                (action_space.high - action_space.low) / 2.)
+                (action_space.high - action_space.low) / 2.).to(self.device)
             self.action_bias = torch.FloatTensor(
-                (action_space.high + action_space.low) / 2.)
+                (action_space.high + action_space.low) / 2.).to(self.device)
 
     def forward(self, x):
+        x = x.to(self.device)
         for layer, activation_fun in zip(self.layers, self.activations):
             x = activation_fun(layer(x))
         mean = self.mean(x)

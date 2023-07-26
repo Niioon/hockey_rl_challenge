@@ -5,16 +5,17 @@ from soft_actor_critic import SacAgent
 import laserhockey.hockey_env as h_env
 import os
 import argparse
+import time
 
 
 parser = argparse.ArgumentParser(description='Trains a SoftActorCritic RL-Agent in the hockey environment')
-parser.add_argument('-e', '--episodes', action='store_const', type=int, default=1000,
+parser.add_argument('-e', '--episodes', type=int, default=1000,
                     help='number of training episodes')
-parser.add_argument('--model_path', type=str,
+parser.add_argument('--model_path',
                     help='loads an already existing model from the specified path instead of initializing a new one')
-parser.add_argument('--train_mode', choices=['defense', 'shooting', 'normal'], type=str, default='normal',
+parser.add_argument('--train_mode', choices=['defense', 'shooting', 'normal'], default='normal',
                     help='game mode to train in')
-parser.add_argument('-l', 'learning_rate',  help='learning rate', default='0.0002')
+parser.add_argument('-l', '--learning_rate',  help='learning rate', default='0.0002')
 
 args = parser.parse_args()
 
@@ -29,17 +30,30 @@ def main():
     # print(ac_space, o_space)
     # print(ac_space.shape[0])
     sac_agent = SacAgent(observation_space=o_space, action_space=ac_space)
+    # load model parameters if path is specified
+    if model_path is not None:
+        sac_agent.load_checkpoint(model_path)
 
-    # TRAIN DEFENSE
-    mode = 'train_defense'
-    episodes = 3000
-    env = h_env.HockeyEnv(mode=h_env.HockeyEnv.TRAIN_DEFENSE)
+    if mode == 'defense':
+        env = h_env.HockeyEnv(mode=h_env.HockeyEnv.TRAIN_DEFENSE)
+        opponent = None
+    elif mode == 'shooting':
+        env = h_env.HockeyEnv(mode=h_env.HockeyEnv.TRAIN_SHOOTING)
+        opponent = None
+    elif mode == 'normal':
+        env = h_env.HockeyEnv()
+        opponent = h_env.BasicOpponent(weak=True)
+
     losses, stats = train_agent(sac_agent, env, mode=mode, max_episodes=episodes)
+    eval_agent(sac_agent, env, mode=mode, render=False, episodes=100)
+    rewards = np.asarray(stats)[:, 1]
+    mean_reward = np.mean(rewards)
+    print(f'average reward {mean_reward}')
     env.close()
     save_stats(np.asarray(stats), np.asarray(losses), mode + str(episodes))
     # plot_loss_rewards(stats, losses, title='Losses and Rewards for Defense Training')
     #
-    # sac_agent.save_checkpoint('hockey', 'defense')
+    sac_agent.save_checkpoint('hockey', f'{mode}_e={episodes}_r={round(mean_reward, 4)}')
 
     # Evaluate Defense
     # env = h_env.HockeyEnv(mode=h_env.HockeyEnv.TRAIN_DEFENSE)
@@ -64,19 +78,20 @@ def main():
     # sac_agent.save_checkpoint('hockey')
 
 
-def train_agent(agent, env, mode='normal', max_episodes=1000):
+def train_agent(agent, env, mode='normal', max_episodes=1000, eval=False):
     stats = []
     losses = []
-    max_steps = 500
-    update_steps = 64
+    max_steps = 250
+    update_steps = 32
 
-    if mode == ('train_defense' or 'train_shooting'):
+    if mode == ('defense' or 'shooting'):
         opponent = None
     else:
         opponent = h_env.BasicOpponent(weak=True)
 
+    print(f'Simulating {max_episodes} episodes')
+    start_time = time.time()
     for i in range(max_episodes):
-        # print("Starting a new episode")
         agent.set_train()
         total_reward = 0
         obs, _info = env.reset()
@@ -86,7 +101,7 @@ def train_agent(agent, env, mode='normal', max_episodes=1000):
             # get action of agent to be trained
             a1 = agent.select_action(obs)
             # get action of opponent
-            if mode == ('train_defense' or 'train_shooting'):
+            if mode in ['defense', 'shooting']:
                 # second agent is static in defense training
                 a2 = [0, 0, 0, 0]
             else:
@@ -99,13 +114,18 @@ def train_agent(agent, env, mode='normal', max_episodes=1000):
             obs_agent2 = env.obs_agent_two()
             if done:
                 break
+        # print(f'time needed : {time.time() - start_time}')
+
+        start_time = time.time()
+        # print(f'training {update_steps} batches')
         for j in range(update_steps):
             losses.append(list(agent.update()))
         stats.append([i, total_reward, t + 1])
+        # print(f'time needed : {time.time() - start_time}')
 
         if i % 20 == 0:
             print("{}: Done after {} steps. Reward: {}".format(i, t + 1, total_reward))
-        if i % 100 == 0:
+        if i % 100 == 0 and eval:
             eval_episodes = 20
             eval_agent(agent, env, mode=mode, render=False, episodes=eval_episodes)
             rewards = np.asarray(stats)[:, 1]
