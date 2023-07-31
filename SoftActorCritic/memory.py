@@ -2,7 +2,7 @@ import numpy as np
 
 # class to store transitions
 class Memory():
-    def __init__(self, max_size=100000):
+    def __init__(self, max_size=1000000):
         self.transitions = np.asarray([])
         self.size = 0
         self.current_idx = 0
@@ -22,6 +22,13 @@ class Memory():
             batch = self.size
         self.inds=np.random.choice(range(self.size), size=batch, replace=False)
         return self.transitions[self.inds,:]
+
+    def clone_old_transitions(self, old_transitions):
+        print('Loading old transitions')
+        for t in old_transitions:
+            self.add_transition(t)
+        print(self.max_size, self.size, self.current_idx)
+        print('Finished')
 
     def get_all_transitions(self):
         return self.transitions[0:self.size]

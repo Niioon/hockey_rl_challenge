@@ -7,15 +7,8 @@ import argparse
 import os
 import time
 
-parser = argparse.ArgumentParser(description='Trains a SoftActorCritic RL-Agent in the hockey environment')
-parser.add_argument('--model_path',
-                    help='loads an already existing model from the specified path instead of initializing a new one')
-parser.add_argument('--mode', choices=['defense', 'shooting', 'normal'], default='normal',
-                    help='game mode for evaluation')
-args = parser.parse_args()
 
-
-def main():
+def main(args):
     env = h_env.HockeyEnv()
     ac_space = env.action_space
     o_space = env.observation_space
@@ -24,11 +17,11 @@ def main():
     # load model parameters
     agent.load_checkpoint(args.model_path)
 
-    print(args.mode)
+    print('mode ', args.mode)
     # check loading
-    print(agent.train_iter)
-    print(agent.log_alpha)
-    print(agent.alpha)
+    print('training_iterations: ', agent.train_iter)
+    print('alpha', agent.alpha)
+    print('training_log', agent.train_log)
 
     if args.mode == 'defense':
         env = h_env.HockeyEnv(mode=h_env.HockeyEnv.TRAIN_DEFENSE)
@@ -38,17 +31,24 @@ def main():
         opponent = None
     elif args.mode == 'normal':
         env = h_env.HockeyEnv()
-        opponent = h_env.BasicOpponent(weak=True)
+        opponent = h_env.BasicOpponent(weak=args.weak)
+        print('weak opponent: ', args.weak)
     else:
         raise ValueError('Unknown mode, chose one of [defense, shooting, normal')
 
     render = False
     max_steps = 250
-    mode = args.mode
+    eval_episodes = 1000
+
+    stats, winner = eval_agent(agent, opponent, env, episodes=eval_episodes, render=render)
+
+    # agent.set_eval()
+
+
+def eval_agent(agent, opponent, env, episodes=250, render=False, max_steps=250):
     stats = []
-    eval_episodes = 100
     winner = []
-    for i in range(eval_episodes):
+    for i in range(episodes):
         total_reward = 0
         obs, _info = env.reset()
         obs_agent2 = env.obs_agent_two()
@@ -72,7 +72,7 @@ def main():
             obs_agent2 = env.obs_agent_two()
             if done:
                 break
-        print(_info)
+        # print(_info)
         winner.append(_info['winner'])
         stats.append([i, total_reward, t + 1])
     rewards = np.asarray(stats)[:, 1]
@@ -82,8 +82,20 @@ def main():
     n_l = np.count_nonzero(winner == -1)
     n_draw = np.count_nonzero(winner == 0)
     print(f'Agent won {n_win} games, lost {n_l} games, draw {n_draw} games')
-    print(f'Average reward over {eval_episodes} episodes: {mean_reward}')
+    print(f'Win/Loss+Win Ratio {n_win/(n_l+n_win)}')
+    print(f'Average reward over {episodes} episodes: {mean_reward}')
+    return stats, winner
+
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Trains a SoftActorCritic RL-Agent in the hockey environment')
+    parser.add_argument('--model_path',
+                        help='loads an already existing model from the specified path instead of initializing a new one')
+    parser.add_argument('--mode', choices=['defense', 'shooting', 'normal'], default='normal',
+                        help='game mode for evaluation')
+    parser.add_argument('--weak', action="store_true",
+                        help='difficulty of the opponent in the normal mode, no influence in other modes')
+
+    args = parser.parse_args()
+    main(args)

@@ -6,22 +6,11 @@ import laserhockey.hockey_env as h_env
 import os
 import argparse
 import time
+from eval_model import eval_agent
 
 
-parser = argparse.ArgumentParser(description='Trains a SoftActorCritic RL-Agent in the hockey environment')
-parser.add_argument('-e', '--episodes', type=int, default=1000,
-                    help='number of training episodes')
-parser.add_argument('--model_path',
-                    help='loads an already existing model from the specified path instead of initializing a new one')
-parser.add_argument('--train_mode', choices=['defense', 'shooting', 'normal'], default='normal',
-                    help='game mode to train in')
-parser.add_argument('-l', '--learning_rate',  help='learning rate', default='0.0002')
-
-args = parser.parse_args()
-
-
-def main():
-    mode = args.train_mode
+def main(args):
+    mode = args.mode
     model_path = args.model_path
     episodes = args.episodes
     env = h_env.HockeyEnv()
@@ -42,18 +31,22 @@ def main():
         opponent = None
     elif mode == 'normal':
         env = h_env.HockeyEnv()
-        opponent = h_env.BasicOpponent(weak=True)
+        opponent = h_env.BasicOpponent(weak=args.weak)
+        print(args.weak)
 
-    losses, stats = train_agent(sac_agent, env, mode=mode, max_episodes=episodes)
-    eval_agent(sac_agent, env, mode=mode, render=False, episodes=100)
+
+    losses, stats = train_agent(sac_agent, env, opponent, mode=mode, max_episodes=episodes, eval=True)
     rewards = np.asarray(stats)[:, 1]
     mean_reward = np.mean(rewards)
     print(f'average reward {mean_reward}')
     env.close()
+    # store training specifications to keep track of total training time over different modes
+    sac_agent.update_train_log(f'Trained in mode {mode} with weak={args.weak} opponent for {episodes} episodes, mean reward: {mean_reward}')
     save_stats(np.asarray(stats), np.asarray(losses), mode + str(episodes))
     # plot_loss_rewards(stats, losses, title='Losses and Rewards for Defense Training')
     #
-    sac_agent.save_checkpoint('hockey', f'{mode}_e={episodes}_r={round(mean_reward, 4)}')
+    sac_agent.save_checkpoint('hockey', f'{mode}_weak={args.weak}_e={episodes}_r={round(mean_reward, 4)}')
+    eval_agent(sac_agent, opponent, env, render=False, episodes=250)
 
     # Evaluate Defense
     # env = h_env.HockeyEnv(mode=h_env.HockeyEnv.TRAIN_DEFENSE)
@@ -78,16 +71,11 @@ def main():
     # sac_agent.save_checkpoint('hockey')
 
 
-def train_agent(agent, env, mode='normal', max_episodes=1000, eval=False):
+def train_agent(agent, env, opponent, mode='normal', max_episodes=1000, eval=False):
     stats = []
     losses = []
     max_steps = 250
     update_steps = 32
-
-    if mode == ('defense' or 'shooting'):
-        opponent = None
-    else:
-        opponent = h_env.BasicOpponent(weak=True)
 
     print(f'Simulating {max_episodes} episodes')
     start_time = time.time()
@@ -101,7 +89,7 @@ def train_agent(agent, env, mode='normal', max_episodes=1000, eval=False):
             # get action of agent to be trained
             a1 = agent.select_action(obs)
             # get action of opponent
-            if mode in ['defense', 'shooting']:
+            if opponent is None:
                 # second agent is static in defense training
                 a2 = [0, 0, 0, 0]
             else:
@@ -125,54 +113,13 @@ def train_agent(agent, env, mode='normal', max_episodes=1000, eval=False):
 
         if i % 20 == 0:
             print("{}: Done after {} steps. Reward: {}".format(i, t + 1, total_reward))
-        if i % 100 == 0 and eval:
-            eval_episodes = 20
-            eval_agent(agent, env, mode=mode, render=False, episodes=eval_episodes)
-            rewards = np.asarray(stats)[:, 1]
-            mean_reward = np.mean(rewards)
-            print(f'Evaluation at step {i}: Average reward over {eval_episodes} episodes: {mean_reward}')
+            print('buffer size', agent.buffer.size)
+
+        if i % 200 == 0 and eval:
+            print(f'Evaluation at episode {i}')
+            stats, winner = eval_agent(agent, opponent, env, episodes=250, render=False)
 
     return losses, stats
-
-
-def eval_agent(agent, env, mode='normal', episodes=100, render=False):
-    stats = []
-    max_steps = 500
-    # set agent to evaluate mode
-    agent.set_eval()
-
-    if mode == ('train_defense' or 'train_shooting'):
-        opponent = None
-    else:
-        opponent = h_env.BasicOpponent(weak=True)
-
-    for i in range(episodes):
-
-        total_reward = 0
-        obs, _info = env.reset()
-        obs_agent2 = env.obs_agent_two()
-        for t in range(max_steps):
-            if render:
-                env.render()
-
-            done = False
-            # get action of agent to be trained
-            a1 = agent.select_action(obs)
-            # get action of opponent
-            if mode == ('train_defense' or 'train_shooting'):
-                # second agent is static in defense training
-                a2 = [0, 0, 0, 0]
-            else:
-                a2 = opponent.act(obs_agent2)
-
-            (obs_new, reward, done, trunc, _info) = env.step(np.hstack([a1, a2]))
-            total_reward += reward
-            obs = obs_new
-            obs_agent2 = env.obs_agent_two()
-            if done:
-                break
-        stats.append([i, total_reward, t + 1])
-    return stats
 
 
 def save_stats(stats, losses, path):
@@ -235,4 +182,18 @@ def plot_loss_rewards(stats, losses, title=' ', kernel_size=25):
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Trains a SoftActorCritic RL-Agent in the hockey environment')
+
+    parser.add_argument('-e', '--episodes', type=int, default=1000,
+                        help='number of training episodes')
+    parser.add_argument('--model_path',
+                        help='loads an already existing model from the specified path instead of initializing a new one')
+    parser.add_argument('--mode', choices=['defense', 'shooting', 'normal'], default='normal',
+                        help='game mode to train in')
+    parser.add_argument('--eval',  action="store_true", help='if true evaluates agent in regular intervals to keep track of performance')
+    parser.add_argument('--weak', action="store_true",
+                        help='difficulty of the opponent in the normal mode, no influence in other modes')
+
+    args = parser.parse_args()
+    print(args)
+    main(args)

@@ -39,9 +39,9 @@ class SacAgent(object):
             "eps": 0.05,
             "discount": 0.95,
             "alpha": 0.2,
-            "buffer_size": int(1e5),
+            "buffer_size": int(1e6),
             "batch_size": 128,
-            "learning_rate": 0.0002,
+            "learning_rate": 0.001, # 0.0002,
             "target_update_interval": 1,
             "tau": 0.005
         }
@@ -51,6 +51,7 @@ class SacAgent(object):
 
         # used to keep track of when to update the target network
         self.train_iter = 0
+        self.train_log = []
 
         self.actor = ActorNetwork(self._observation_dim, self._action_n, self.device)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),
@@ -69,7 +70,9 @@ class SacAgent(object):
         self.alpha = self._config['alpha']
         if self.automatic_entropy_tuning is True:
             self.target_entropy = -torch.prod(torch.Tensor(action_space.shape).to(self.device)).item()
+            print(self.target_entropy)
             self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
+            print(self.log_alpha)
             self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=self._config['learning_rate'])
         # update target net once at the beginning
         self._hard_update_target_net()
@@ -98,6 +101,9 @@ class SacAgent(object):
 
     def set_train(self):
         self.eval = False
+
+    def update_train_log(self, entry):
+        self.train_log.append(entry)
 
     def select_action(self, state):
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
@@ -194,22 +200,35 @@ class SacAgent(object):
                     'log_alpha': self.log_alpha,
                     'alpha_optimizer_state_dict': self.alpha_optim.state_dict(),
                     'train_iter': self.train_iter,
+                    'config': self._config,
+                    'train_log': self.train_log,
+                    'buffer_transitions': self.buffer.get_all_transitions()
                     }, save_path)
-        # save metadata in separate file
 
-
-    def load_checkpoint(self, ckpt_path, evaluate=False):
+    def load_checkpoint(self, ckpt_path, load_buffer=True, new_optimizers=False):
         print('Loading models from {}'.format(ckpt_path))
         if ckpt_path is not None:
-            checkpoint = torch.load(ckpt_path)
+            checkpoint = torch.load(ckpt_path, map_location=torch.device(self.device))
             self.actor.load_state_dict(checkpoint['actor_state_dict'])
             self.q.load_state_dict(checkpoint['critic_state_dict'])
             self.target_q.load_state_dict(checkpoint['critic_target_state_dict'])
-            self.q_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
-            self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
             self.log_alpha = checkpoint['log_alpha']
             # compute actual alpha from trained log_alpha
             self.alpha = self.log_alpha.exp()
-            self.alpha_optim.load_state_dict(checkpoint['alpha_optimizer_state_dict'])
             self.train_iter = checkpoint['train_iter']
+            self._config = checkpoint['config']
+            self.train_log = checkpoint['train_log']
+
+            if load_buffer:
+                self.buffer.clone_old_transitions(checkpoint['buffer_transitions'])
+            # test if it is good to start with fresh optimizers after mode change because learning rates might be very
+            #  small due to adam
+            if not new_optimizers:
+                self.q_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
+                self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
+                self.alpha_optim.load_state_dict(checkpoint['alpha_optimizer_state_dict'])
+
+
+
+
 
