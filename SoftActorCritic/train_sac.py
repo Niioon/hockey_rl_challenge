@@ -35,17 +35,18 @@ def main(args):
         print(args.weak)
 
 
-    losses, stats = train_agent(sac_agent, env, opponent, mode=mode, max_episodes=episodes, eval=True)
+    losses, stats = train_agent(sac_agent, env, opponent, mode=mode, max_episodes=episodes, eval=args.eval)
     rewards = np.asarray(stats)[:, 1]
     mean_reward = np.mean(rewards)
     print(f'average reward {mean_reward}')
     env.close()
     # store training specifications to keep track of total training time over different modes
     sac_agent.update_train_log(f'Trained in mode {mode} with weak={args.weak} opponent for {episodes} episodes, mean reward: {mean_reward}')
-    save_stats(np.asarray(stats), np.asarray(losses), mode + str(episodes))
+
+    save_name = f'sac_checkpoint_hockey_{mode}_weak={args.weak}_e={episodes}_r={round(mean_reward, 4)}'
+    save_stats(np.asarray(stats), np.asarray(losses), save_name)
     # plot_loss_rewards(stats, losses, title='Losses and Rewards for Defense Training')
-    #
-    sac_agent.save_checkpoint('hockey', f'{mode}_weak={args.weak}_e={episodes}_r={round(mean_reward, 4)}')
+    sac_agent.save_checkpoint(save_name=save_name)
     eval_agent(sac_agent, opponent, env, render=False, episodes=250)
 
     # Evaluate Defense
@@ -113,11 +114,11 @@ def train_agent(agent, env, opponent, mode='normal', max_episodes=1000, eval=Fal
 
         if i % 20 == 0:
             print("{}: Done after {} steps. Reward: {}".format(i, t + 1, total_reward))
-            print('buffer size', agent.buffer.size)
 
         if i % 200 == 0 and eval:
             print(f'Evaluation at episode {i}')
             stats, winner = eval_agent(agent, opponent, env, episodes=250, render=False)
+            print('buffer size', agent.buffer.size)
 
     return losses, stats
 
@@ -195,5 +196,4 @@ if __name__ == '__main__':
                         help='difficulty of the opponent in the normal mode, no influence in other modes')
 
     args = parser.parse_args()
-    print(args)
     main(args)

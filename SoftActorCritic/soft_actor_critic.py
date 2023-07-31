@@ -5,8 +5,7 @@ import numpy as np
 from gymnasium import spaces
 from modules import ActorNetwork, CriticNetwork
 import os
-from pathlib import Path
-import pickle
+import warnings
 
 
 class SacAgent(object):
@@ -70,9 +69,7 @@ class SacAgent(object):
         self.alpha = self._config['alpha']
         if self.automatic_entropy_tuning is True:
             self.target_entropy = -torch.prod(torch.Tensor(action_space.shape).to(self.device)).item()
-            print(self.target_entropy)
             self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
-            print(self.log_alpha)
             self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=self._config['learning_rate'])
         # update target net once at the beginning
         self._hard_update_target_net()
@@ -177,19 +174,19 @@ class SacAgent(object):
             self.alpha_optim.step()
 
             self.alpha = self.log_alpha.exp()
-        else:
-            alpha_loss = torch.tensor(0.).to(self.device)
 
         if self.train_iter % self._config['target_update_interval'] == 0:
             self._soft_update_target_net()
 
-        return q1_loss.item(), q2_loss.item(), policy_loss.item()
+        return q1_loss.item(), q2_loss.item(), policy_loss.item(), self.alpha.item()
 
-    def save_checkpoint(self, env_name, suffix="", save_path=None):
+    def save_checkpoint(self, save_name=None):
         if not os.path.exists('checkpoints/'):
             os.makedirs('checkpoints/')
-        if save_path is None:
-            save_path = "checkpoints/sac_checkpoint_{}_{}".format(env_name, suffix)
+        if save_name is None:
+            save_path = "checkpoints/sac_checkpoint"
+        else:
+            save_path = "checkpoints/" + save_name
         print('Saving models to {}'.format(save_path))
         torch.save({
                     'actor_state_dict': self.actor.state_dict(),
@@ -202,12 +199,16 @@ class SacAgent(object):
                     'train_iter': self.train_iter,
                     'config': self._config,
                     'train_log': self.train_log,
-                    'buffer_transitions': self.buffer.get_all_transitions()
-                    }, save_path)
+                     }, save_path)
+
+        buffer_path = save_path + '_buffer'
+        print('Saving buffer to {}'.format(buffer_path))
+        torch.save({'buffer_transitions': self.buffer.get_all_transitions()}, buffer_path)
+
 
     def load_checkpoint(self, ckpt_path, load_buffer=True, new_optimizers=False):
         print('Loading models from {}'.format(ckpt_path))
-        if ckpt_path is not None:
+        if os.path.isfile(ckpt_path):
             checkpoint = torch.load(ckpt_path, map_location=torch.device(self.device))
             self.actor.load_state_dict(checkpoint['actor_state_dict'])
             self.q.load_state_dict(checkpoint['critic_state_dict'])
@@ -219,14 +220,24 @@ class SacAgent(object):
             self._config = checkpoint['config']
             self.train_log = checkpoint['train_log']
 
-            if load_buffer:
-                self.buffer.clone_old_transitions(checkpoint['buffer_transitions'])
             # test if it is good to start with fresh optimizers after mode change because learning rates might be very
             #  small due to adam
             if not new_optimizers:
                 self.q_optimizer.load_state_dict(checkpoint['critic_optimizer_state_dict'])
                 self.actor_optimizer.load_state_dict(checkpoint['actor_optimizer_state_dict'])
                 self.alpha_optim.load_state_dict(checkpoint['alpha_optimizer_state_dict'])
+
+            if load_buffer:
+                buffer_path = ckpt_path + '_buffer'
+                if os.path.isfile(buffer_path):
+                    buffer_dict = torch.load(buffer_path, map_location=torch.device(self.device))
+                    self.buffer.clone_old_transitions(buffer_dict['buffer_transitions'])
+                else:
+                    warnings.warn('no stored buffer found for the given checkpoint path, training will resume with empty buffer')
+
+        else:
+            raise FileNotFoundError('No checkpoint file under the given path')
+
 
 
 
