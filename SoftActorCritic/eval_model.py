@@ -15,7 +15,7 @@ def main(args):
     agent = SacAgent(observation_space=o_space, action_space=ac_space)
 
     # load model parameters
-    agent.load_checkpoint(args.model_path)
+    agent.load_checkpoint(args.model_path, load_buffer=False)
 
     print('mode ', args.mode)
     # check loading
@@ -36,11 +36,11 @@ def main(args):
     else:
         raise ValueError('Unknown mode, chose one of [defense, shooting, normal')
 
-    render = False
-    max_steps = 250
-    eval_episodes = 1000
 
-    stats, winner = eval_agent(agent, opponent, env, episodes=eval_episodes, render=render)
+    max_steps = 250
+
+
+    winner = eval_agent(agent, opponent, env, episodes=args.episodes, render=args.render)
 
     # agent.set_eval()
 
@@ -58,7 +58,7 @@ def eval_agent(agent, opponent, env, episodes=250, render=False, max_steps=250):
 
             done = False
             # get action of agent to be trained
-            a1 = agent.select_action(obs)
+            a1 = agent.act(obs)
             # get action of opponent
             if opponent is None:
                 # second agent is static in defense training
@@ -84,7 +84,7 @@ def eval_agent(agent, opponent, env, episodes=250, render=False, max_steps=250):
     print(f'Agent won {n_win} games, lost {n_l} games, draw {n_draw} games')
     print(f'Win/Loss+Win Ratio {n_win/(n_l+n_win)}')
     print(f'Average reward over {episodes} episodes: {mean_reward}')
-    return stats, winner
+    return [n_win, n_l, n_draw]
 
 
 
@@ -96,6 +96,10 @@ if __name__ == '__main__':
                         help='game mode for evaluation')
     parser.add_argument('--weak', action="store_true",
                         help='difficulty of the opponent in the normal mode, no influence in other modes')
+    parser.add_argument('--render',  action="store_true", help='if true render env')
+    parser.add_argument('-e', '--episodes', type=int, default=1000,
+                        help='number of training episodes')
+
 
     args = parser.parse_args()
     main(args)

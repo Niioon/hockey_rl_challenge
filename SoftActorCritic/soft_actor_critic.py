@@ -13,7 +13,7 @@ class SacAgent(object):
     Agent implementing Q-learning with NN function approximation.
     """
 
-    def __init__(self, observation_space, action_space, **userconfig):
+    def __init__(self, observation_space, action_space, hidden_sizes=[256, 256], **userconfig):
         # if not isinstance(observation_space, spaces.box.Box):
         #    raise UnsupportedSpace('Observation space {} incompatible ' \
         #                            'with {}. (Require: Box)'.format(observation_space, self))
@@ -32,13 +32,13 @@ class SacAgent(object):
         self._action_n = int(action_space.shape[0]/2)
 
         self.eval = False
-        self.automatic_entropy_tuning = True
+        self.automatic_entropy_tuning = False
 
         self._config = {
             "eps": 0.05,
             "discount": 0.95,
-            "alpha": 0.2,
-            "buffer_size": int(1e6),
+            "alpha": 0.05,
+            "buffer_size": int(1e5)*3,
             "batch_size": 128,
             "learning_rate": 0.001, # 0.0002,
             "target_update_interval": 1,
@@ -52,13 +52,13 @@ class SacAgent(object):
         self.train_iter = 0
         self.train_log = []
 
-        self.actor = ActorNetwork(self._observation_dim, self._action_n, self.device)
+        self.actor = ActorNetwork(self._observation_dim, self._action_n, self.device, hidden_sizes=hidden_sizes)
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),
                                                 lr=self._config['learning_rate'],
                                                 eps=0.000001)
 
-        self.q = CriticNetwork(self._observation_dim, self._action_n, self.device)
-        self.target_q = CriticNetwork(self._observation_dim, self._action_n, self.device)
+        self.q = CriticNetwork(self._observation_dim, self._action_n, self.device, hidden_sizes=hidden_sizes)
+        self.target_q = CriticNetwork(self._observation_dim, self._action_n, self.device, hidden_sizes=hidden_sizes)
 
         self.q_optimizer = torch.optim.Adam(self.q.parameters(),
                                             lr=self._config['learning_rate'],
@@ -66,11 +66,20 @@ class SacAgent(object):
         self.q_loss_function = nn.MSELoss()
 
         # factor for balancing influence of entropy term in loss function, can be learned by gradient descent
-        self.alpha = self._config['alpha']
         if self.automatic_entropy_tuning is True:
             self.target_entropy = -torch.prod(torch.Tensor(action_space.shape).to(self.device)).item()
             self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
             self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=self._config['learning_rate'])
+            self.alpha = self.log_alpha.exp()
+
+        else:
+            # not needed, just for save function
+            # quick dirty fix, in long term make list of attributes which should be saved
+            self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
+            self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=self._config['learning_rate'])
+            self.alpha = torch.tensor(self._config['alpha'])
+            print('alpha', self.alpha)
+
         # update target net once at the beginning
         self._hard_update_target_net()
 
@@ -102,7 +111,7 @@ class SacAgent(object):
     def update_train_log(self, entry):
         self.train_log.append(entry)
 
-    def select_action(self, state):
+    def act(self, state):
         state = torch.FloatTensor(state).to(self.device).unsqueeze(0)
         if not eval:
             action, _, _ = self.actor.sample(state)
@@ -115,6 +124,7 @@ class SacAgent(object):
 
     def update(self):
         self.train_iter += 1
+
         # sample batch from replay buffer
         # print(self.train_iter)
         data = self.buffer.sample(self._config['batch_size'])
@@ -159,10 +169,10 @@ class SacAgent(object):
         min_q_pi = torch.min(q1_pi, q2_pi)
 
         policy_loss = ((self.alpha * log_pi) - min_q_pi).mean()
-        # policy_loss = (min_q_pi - self.alpha * log_pi).mean()
 
         self.actor_optimizer.zero_grad()
         policy_loss.backward()
+
         self.actor_optimizer.step()
 
         # Optimize alpha
@@ -213,9 +223,10 @@ class SacAgent(object):
             self.actor.load_state_dict(checkpoint['actor_state_dict'])
             self.q.load_state_dict(checkpoint['critic_state_dict'])
             self.target_q.load_state_dict(checkpoint['critic_target_state_dict'])
-            self.log_alpha = checkpoint['log_alpha']
             # compute actual alpha from trained log_alpha
-            self.alpha = self.log_alpha.exp()
+            if self.automatic_entropy_tuning:
+                self.log_alpha = checkpoint['log_alpha']
+                self.alpha = self.log_alpha.exp()
             self.train_iter = checkpoint['train_iter']
             self._config = checkpoint['config']
             self.train_log = checkpoint['train_log']

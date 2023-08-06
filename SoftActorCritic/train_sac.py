@@ -5,6 +5,7 @@ from soft_actor_critic import SacAgent
 import laserhockey.hockey_env as h_env
 import os
 import argparse
+import pickle
 import time
 from eval_model import eval_agent
 
@@ -34,52 +35,29 @@ def main(args):
         opponent = h_env.BasicOpponent(weak=args.weak)
         print(args.weak)
 
-
-    losses, stats = train_agent(sac_agent, env, opponent, mode=mode, max_episodes=episodes, eval=args.eval)
-    rewards = np.asarray(stats)[:, 1]
+    stats_dict = train_agent(sac_agent, env, opponent, max_episodes=episodes, eval=True)
+    rewards = np.asarray(stats_dict['stats'])[:, 1]
     mean_reward = np.mean(rewards)
     print(f'average reward {mean_reward}')
     env.close()
     # store training specifications to keep track of total training time over different modes
     sac_agent.update_train_log(f'Trained in mode {mode} with weak={args.weak} opponent for {episodes} episodes, mean reward: {mean_reward}')
 
-    save_name = f'sac_checkpoint_hockey_{mode}_weak={args.weak}_e={episodes}_r={round(mean_reward, 4)}'
-    save_stats(np.asarray(stats), np.asarray(losses), save_name)
+    save_name = f'sac_checkpoint_hockey_{mode}_et={sac_agent.automatic_entropy_tuning}_a={round(sac_agent.alpha.item(), 4)}_weak={args.weak}_e={episodes}_r={round(mean_reward, 4)}'
+    save_stats(stats_dict, save_name)
     # plot_loss_rewards(stats, losses, title='Losses and Rewards for Defense Training')
     sac_agent.save_checkpoint(save_name=save_name)
     eval_agent(sac_agent, opponent, env, render=False, episodes=250)
 
-    # Evaluate Defense
-    # env = h_env.HockeyEnv(mode=h_env.HockeyEnv.TRAIN_DEFENSE)
-    # stats = eval_agent(sac_agent, env, render=False, mode='train_defense')
-    # env.close()
-    # plot_rewards(stats)
 
-    # env = h_env.HockeyEnv(mode=h_env.HockeyEnv.TRAIN_SHOOTING)
-#
-    # losses, stats = train_agent(sac_agent, env, mode='train_shooting', max_episodes=1000)
-    # plot_loss_rewards(stats, losses, title='Losses and Rewards for Normal Training')
-    # env.close()
-
-    # env = h_env.HockeyEnv()
-#
-    # losses, stats = train_agent(sac_agent, env, mode='normal', max_episodes=1000)
-    # plot_loss_rewards(stats, losses, title='Losses and Rewards for Normal Training')
-    # stats = eval_agent(sac_agent, env, render=True, mode='normal')
-#
-    # env.close()
-#
-    # sac_agent.save_checkpoint('hockey')
-
-
-def train_agent(agent, env, opponent, mode='normal', max_episodes=1000, eval=False):
+def train_agent(agent, env, opponent, max_episodes=1000, eval=False):
     stats = []
     losses = []
+    winners = []
     max_steps = 250
     update_steps = 32
 
     print(f'Simulating {max_episodes} episodes')
-    start_time = time.time()
     for i in range(max_episodes):
         agent.set_train()
         total_reward = 0
@@ -88,7 +66,7 @@ def train_agent(agent, env, opponent, mode='normal', max_episodes=1000, eval=Fal
         for t in range(max_steps):
             done = False
             # get action of agent to be trained
-            a1 = agent.select_action(obs)
+            a1 = agent.act(obs)
             # get action of opponent
             if opponent is None:
                 # second agent is static in defense training
@@ -115,20 +93,21 @@ def train_agent(agent, env, opponent, mode='normal', max_episodes=1000, eval=Fal
         if i % 20 == 0:
             print("{}: Done after {} steps. Reward: {}".format(i, t + 1, total_reward))
 
-        if i % 200 == 0 and eval:
+        if i % 500 == 0 and eval:
             print(f'Evaluation at episode {i}')
-            stats, winner = eval_agent(agent, opponent, env, episodes=250, render=False)
+            n_wins = eval_agent(agent, opponent, env, episodes=500, render=False)
             print('buffer size', agent.buffer.size)
+            winners.append(n_wins)
 
-    return losses, stats
+    stats_dict = {'losses': losses, 'stats': stats, 'winners': winners}
+    return stats_dict
 
 
-def save_stats(stats, losses, path):
+def save_stats(stats_dict, save_name):
     if not os.path.exists('stats/'):
         os.makedirs('stats/')
-    np.savetxt('stats/' + path + 'stats', stats)
-    np.savetxt('stats/' + path + 'losses', losses)
-
+    with open('stats/' + save_name + '.pkl', 'wb') as f:
+        pickle.dump(stats_dict, f)
 
 
 def plot_rewards(stats):
