@@ -13,7 +13,8 @@ class SacAgent(object):
     Agent implementing Q-learning with NN function approximation.
     """
 
-    def __init__(self, observation_space, action_space, hidden_sizes=[256, 256], **userconfig):
+    def __init__(self, observation_space, action_space, hidden_sizes=[256, 256],
+                 automatic_entropy_tuning=True, **userconfig):
         # if not isinstance(observation_space, spaces.box.Box):
         #    raise UnsupportedSpace('Observation space {} incompatible ' \
         #                            'with {}. (Require: Box)'.format(observation_space, self))
@@ -32,7 +33,7 @@ class SacAgent(object):
         self._action_n = int(action_space.shape[0]/2)
 
         self.eval = False
-        self.automatic_entropy_tuning = False
+        self.automatic_entropy_tuning = automatic_entropy_tuning
 
         self._config = {
             "eps": 0.05,
