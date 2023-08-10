@@ -2,7 +2,6 @@ import memory as mem
 import torch
 from torch import nn
 import numpy as np
-from gymnasium import spaces
 from modules import ActorNetwork, CriticNetwork
 import os
 import warnings
@@ -15,15 +14,7 @@ class SacAgent(object):
 
     def __init__(self, observation_space, action_space, hidden_sizes=[256, 256],
                  automatic_entropy_tuning=True, **userconfig):
-        # if not isinstance(observation_space, spaces.box.Box):
-        #    raise UnsupportedSpace('Observation space {} incompatible ' \
-        #                            'with {}. (Require: Box)'.format(observation_space, self))
-        # if not isinstance(action_space, spaces.discrete.Discrete):
-        #     raise UnsupportedSpace('Action space {} incompatible with {}.' \
-        #                            ' (Reqire Discrete.)'.format(action_space, self))
-
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        # self.device = 'cpu'
         print(self.device)
 
         self._observation_space = observation_space
@@ -41,7 +32,7 @@ class SacAgent(object):
             "alpha": 0.05,
             "buffer_size": int(1e5)*3,
             "batch_size": 128,
-            "learning_rate": 0.001, # 0.0002,
+            "learning_rate": 0.001,
             "target_update_interval": 1,
             "tau": 0.005
         }
@@ -79,7 +70,6 @@ class SacAgent(object):
             self.log_alpha = torch.zeros(1, requires_grad=True, device=self.device)
             self.alpha_optim = torch.optim.Adam([self.log_alpha], lr=self._config['learning_rate'])
             self.alpha = torch.tensor(self._config['alpha'])
-            print('alpha', self.alpha)
 
         # update target net once at the beginning
         self._hard_update_target_net()
@@ -118,16 +108,11 @@ class SacAgent(object):
             action, _, _ = self.actor.sample(state)
         else:
             _, _, action = self.actor.sample(state)
-            # action, _, _ = self.actor.sample(state)
-
         return action.detach().cpu().numpy()[0]
-        # return action.numpy()[0]
 
     def update(self):
         self.train_iter += 1
-
         # sample batch from replay buffer
-        # print(self.train_iter)
         data = self.buffer.sample(self._config['batch_size'])
 
         state = torch.FloatTensor(np.stack(data[:, 0])).to(self.device)  # (batchzize, ob_dim)
@@ -249,9 +234,3 @@ class SacAgent(object):
 
         else:
             raise FileNotFoundError('No checkpoint file under the given path')
-
-
-
-
-
-

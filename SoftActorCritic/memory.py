@@ -1,5 +1,6 @@
 import numpy as np
 
+
 # class to store transitions
 class Memory():
     def __init__(self, max_size=1000000):

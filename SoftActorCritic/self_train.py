@@ -1,19 +1,13 @@
-
 from soft_actor_critic import SacAgent
-import copy
 from train_sac import save_stats
 import numpy as np
-import torch
-import matplotlib.pyplot as plt
 import laserhockey.hockey_env as h_env
-import os
 import argparse
 from eval_model import eval_agent
 
 
 def main(args):
     # trains agent against itself
-
     automatic_entropy_tuning = False
     env = h_env.HockeyEnv()
 
@@ -50,13 +44,6 @@ def main(args):
 
 def self_play(env, agent, opponent, evaluation_agent, episodes=1000, eval=True, eval_episodes=500, episodes_per_step=1, update_steps=32):
 
-    """
-    trains agent against itself
-    :param env:
-    :param agent:
-    :param episodes:
-    :return:
-    """
     i = 0
     losses = []
     winners = []
@@ -64,11 +51,9 @@ def self_play(env, agent, opponent, evaluation_agent, episodes=1000, eval=True, 
     winners_strong = []
     stats = []
 
-
-    # additional opoponents for evaluation needed for plots
+    # additional opponents for evaluation needed for plots
     basic_weak_opponent = h_env.BasicOpponent(weak=True)
     basic_strong_opponent = h_env.BasicOpponent(weak=False)
-
     # copy_interval = episodes_per_step*20
     while i < episodes:
 
@@ -115,6 +100,7 @@ def self_play(env, agent, opponent, evaluation_agent, episodes=1000, eval=True, 
     agent.save_checkpoint(save_name=save_name)
     return save_name, stats_dict
 
+
 def duel_models(env, agent_1, agent_2, episodes=1000, render=False, store_transitions_1=False):
 
     stats = []
@@ -148,7 +134,6 @@ def duel_models(env, agent_1, agent_2, episodes=1000, render=False, store_transi
     n_win = np.count_nonzero(winner == 1)
     n_l = np.count_nonzero(winner == -1)
     n_draw = np.count_nonzero(winner == 0)
-    # print(f'Agent 1 won {n_win} games, Agent 2 won {n_l} games, draw {n_draw} games')
     return stats, [n_win, n_l, n_draw]
 
 
@@ -157,7 +142,5 @@ if __name__ == '__main__':
     parser.add_argument('model_path',
                         help='path to the checkpoint file of model_1')
     parser.add_argument('--render',  action="store_true", help='if true render env')
-    parser.add_argument('-e', '--episodes', type=int, default=1000,
-                        help='number of training episodes')
     args = parser.parse_args()
     main(args)

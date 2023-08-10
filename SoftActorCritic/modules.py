@@ -1,6 +1,5 @@
 import torch
 from torch import nn
-import numpy as np
 
 
 class CriticNetwork(nn.Module):
@@ -12,7 +11,7 @@ class CriticNetwork(nn.Module):
     """
 
     def __init__(self, observation_dim, action_dim, device,
-                 hidden_sizes=[128, 128]):
+                 hidden_sizes=[256, 256]):
         super(CriticNetwork, self).__init__()
 
         self.input_size = observation_dim + action_dim
@@ -50,7 +49,7 @@ class ActorNetwork(nn.Module):
     """
 
     def __init__(self, observation_dim, action_dim, device,
-                 hidden_sizes=[128, 128], action_space=None, learning_rate=0.0002):
+                 hidden_sizes=[256, 256], action_space=None, learning_rate=0.0002):
 
         super(ActorNetwork, self).__init__()
 
