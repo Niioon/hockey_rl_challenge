@@ -1,12 +1,12 @@
 import numpy as np
-import torch
-import matplotlib.pyplot as plt
 from soft_actor_critic import SacAgent
 import laserhockey.hockey_env as h_env
 import argparse
-import os
-import time
 
+# script for evaluation
+# For evaluating the two models mentioned in the report use teh following paths
+# sac agent alpha=0.05: trained_models/sac_checkpoint_hockey_normal_et=False_a=0.05_weak=False_e=25000_r=4.928
+# sac agent alpha=auto: trained_models/sac_checkpoint_hockey_normal_et=True_a=0.0014_weak=False_e=25000_r=6.0621
 
 def main(args):
     env = h_env.HockeyEnv()
@@ -18,7 +18,6 @@ def main(args):
     agent.load_checkpoint(args.model_path, load_buffer=False)
 
     print('mode ', args.mode)
-    # check loading
     print('training_iterations: ', agent.train_iter)
     print('alpha', agent.alpha)
     print('training_log', agent.train_log)
@@ -36,13 +35,7 @@ def main(args):
     else:
         raise ValueError('Unknown mode, chose one of [defense, shooting, normal')
 
-
-    max_steps = 250
-
-
-    winner = eval_agent(agent, opponent, env, episodes=args.episodes, render=args.render)
-
-    # agent.set_eval()
+    _ = eval_agent(agent, opponent, env, episodes=args.episodes, render=args.render)
 
 
 def eval_agent(agent, opponent, env, episodes=250, render=False, max_steps=250):
@@ -72,7 +65,6 @@ def eval_agent(agent, opponent, env, episodes=250, render=False, max_steps=250):
             obs_agent2 = env.obs_agent_two()
             if done:
                 break
-        # print(_info)
         winner.append(_info['winner'])
         stats.append([i, total_reward, t + 1])
     rewards = np.asarray(stats)[:, 1]
@@ -87,7 +79,6 @@ def eval_agent(agent, opponent, env, episodes=250, render=False, max_steps=250):
     return [n_win, n_l, n_draw]
 
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Trains a SoftActorCritic RL-Agent in the hockey environment')
     parser.add_argument('--model_path',
@@ -99,7 +90,6 @@ if __name__ == '__main__':
     parser.add_argument('--render',  action="store_true", help='if true render env')
     parser.add_argument('-e', '--episodes', type=int, default=1000,
                         help='number of training episodes')
-
 
     args = parser.parse_args()
     main(args)

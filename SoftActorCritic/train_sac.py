@@ -1,12 +1,10 @@
 import numpy as np
-import torch
 import matplotlib.pyplot as plt
 from soft_actor_critic import SacAgent
 import laserhockey.hockey_env as h_env
 import os
 import argparse
 import pickle
-import time
 from eval_model import eval_agent
 
 
@@ -17,8 +15,7 @@ def main(args):
     env = h_env.HockeyEnv()
     ac_space = env.action_space
     o_space = env.observation_space
-    # print(ac_space, o_space)
-    # print(ac_space.shape[0])
+
     sac_agent = SacAgent(observation_space=o_space, action_space=ac_space)
     # load model parameters if path is specified
     if model_path is not None:
@@ -33,19 +30,16 @@ def main(args):
     elif mode == 'normal':
         env = h_env.HockeyEnv()
         opponent = h_env.BasicOpponent(weak=args.weak)
-        print(args.weak)
+        print('Weak Opponent: ', args.weak)
 
     stats_dict = train_agent(sac_agent, env, opponent, max_episodes=episodes, eval=True)
     rewards = np.asarray(stats_dict['stats'])[:, 1]
     mean_reward = np.mean(rewards)
-    print(f'average reward {mean_reward}')
     env.close()
     # store training specifications to keep track of total training time over different modes
     sac_agent.update_train_log(f'Trained in mode {mode} with weak={args.weak} opponent for {episodes} episodes, mean reward: {mean_reward}')
-
     save_name = f'sac_checkpoint_hockey_{mode}_et={sac_agent.automatic_entropy_tuning}_a={round(sac_agent.alpha.item(), 4)}_weak={args.weak}_e={episodes}_r={round(mean_reward, 4)}'
     save_stats(stats_dict, save_name)
-    # plot_loss_rewards(stats, losses, title='Losses and Rewards for Defense Training')
     sac_agent.save_checkpoint(save_name=save_name)
     eval_agent(sac_agent, opponent, env, render=False, episodes=250)
 
@@ -81,14 +75,9 @@ def train_agent(agent, env, opponent, max_episodes=1000, eval=False):
             obs_agent2 = env.obs_agent_two()
             if done:
                 break
-        # print(f'time needed : {time.time() - start_time}')
-
-        start_time = time.time()
-        # print(f'training {update_steps} batches')
         for j in range(update_steps):
             losses.append(list(agent.update()))
         stats.append([i, total_reward, t + 1])
-        # print(f'time needed : {time.time() - start_time}')
 
         if i % 20 == 0:
             print("{}: Done after {} steps. Reward: {}".format(i, t + 1, total_reward))
@@ -121,23 +110,13 @@ def plot_rewards(stats):
     plt.show()
 
 
-
-
-def plot_loss_rewards(stats, losses, title=' ', kernel_size=25):
+def plot_loss_rewards(stats, losses, title=' '):
     stats_np = np.asarray(stats)
     rewards = stats_np[:, 1]
-    kernel = np.ones(kernel_size) / kernel_size
-    kernel_rewards = np.ones(100) / 100
     # smooth rewards
-    rewards_smooth = np.convolve(rewards, kernel_rewards, mode='same')
     losses_q1 = np.asarray(losses)[:, 0]
     losses_q2 = np.asarray(losses)[:, 1]
     losses_actor = np.asarray(losses)[:, 2]
-    # smooth losses
-    losses_smooth_q1 = np.convolve(losses_q1, kernel, mode='same')
-    losses_smooth_q2 = np.convolve(losses_q2, kernel, mode='same')
-
-    losses_smooth_actor = np.convolve(losses_actor, kernel, mode='same')
 
     fig, axes = plt.subplots(2, 2, figsize=(14, 8))
     fig.suptitle(title)
