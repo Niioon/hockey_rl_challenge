@@ -3,6 +3,10 @@ from soft_actor_critic import SacAgent
 import laserhockey.hockey_env as h_env
 import argparse
 
+# script for evaluation
+# For evaluating the two models mentioned in the report use teh following paths
+# sac agent alpha=0.05: trained_models/sac_checkpoint_hockey_normal_et=False_a=0.05_weak=False_e=25000_r=4.928
+# sac agent alpha=auto: trained_models/sac_checkpoint_hockey_normal_et=True_a=0.0014_weak=False_e=25000_r=6.0621
 
 def main(args):
     env = h_env.HockeyEnv()
