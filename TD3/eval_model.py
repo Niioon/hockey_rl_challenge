@@ -1,24 +1,23 @@
 import numpy as np
-import torch
-import matplotlib.pyplot as plt
 from TD3 import TD3Agent
 import laserhockey.hockey_env as h_env
 import argparse
-import os
-import time
 
+# script for evaluation
+# For evaluating the models that participated in the tournament use the following path:
+# trained_model\td3_checkpoint_hockey_tau=0.0025_normal_2x256_weak=False_e=25000_r=7.9188
 
-def main(opts):
+def main(args):
     env = h_env.HockeyEnv()
     td3_agent = TD3Agent(env.observation_space, env.action_space)
     
     # load model parameters
-    td3_agent.load_checkpoint(opts.model_path, load_buffer=False)
+    td3_agent.load_checkpoint(args.model_path, load_buffer=False)
 
-    print('mode ', opts.mode)
+    print('mode ', args.mode)
     # check loading
     print('training_iterations: ', td3_agent.train_iter)
-    #print('training_log', td3_agent.train_log)
+    print('training_log', td3_agent.train_log)
 
     if args.mode == 'defense':
         env = h_env.HockeyEnv(mode=h_env.HockeyEnv.TRAIN_DEFENSE)
@@ -33,13 +32,8 @@ def main(opts):
     else:
         raise ValueError('Unknown mode, chose one of [defense, shooting, normal')
 
-    render = False
-    max_steps = 250
-    eval_episodes = 500
+    _ = eval_agent(td3_agent, opponent, env, episodes=args.episodes, render=args.render)
 
-    winner = eval_agent(td3_agent, opponent, env, episodes=eval_episodes, render=render)
-
-    # agent.set_eval()
 
 
 def eval_agent(td3_agent, opponent, env, episodes=250, render=False, max_steps=250):
@@ -54,7 +48,7 @@ def eval_agent(td3_agent, opponent, env, episodes=250, render=False, max_steps=2
                 env.render()
 
             done = False
-            # get action of agent       to be trained
+            # get action of agent to be trained
             a1 = td3_agent.act(obs)
             # get action of opponent
             if opponent is None:
@@ -69,11 +63,9 @@ def eval_agent(td3_agent, opponent, env, episodes=250, render=False, max_steps=2
             obs_agent2 = env.obs_agent_two()
             if done:
                 break
-        # print(_info)
         winner.append(_info['winner'])
         stats.append([i, total_reward, t + 1])
     rewards = np.asarray(stats)[:, 1]
-    #plot_rewards(rewards)
     mean_reward = np.mean(rewards)
     winner = np.asarray(winner)
     n_win = np.count_nonzero(winner == 1)
@@ -84,16 +76,6 @@ def eval_agent(td3_agent, opponent, env, episodes=250, render=False, max_steps=2
     print(f'Average reward over {episodes} episodes: {mean_reward}')
     return [n_win, n_l, n_draw]
 
-def plot_rewards(rewards):
-    fig, ax = plt.subplots(1, 1, figsize=(14, 8))
-    fig.suptitle('rewards in evaluation')
-    ax.plot(rewards)
-    ax.set_ylabel('total_reward')
-    ax.set_xlabel('num_episodes')
-    plt.savefig(f'stats/figure')
-    plt.show()
-
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Trains a SoftActorCritic RL-Agent in the hockey environment')
@@ -103,6 +85,8 @@ if __name__ == '__main__':
                         help='game mode for evaluation')
     parser.add_argument('--weak', action="store_true",
                         help='difficulty of the opponent in the normal mode, no influence in other modes')
-
+    parser.add_argument('--render',  action="store_true", help='if true render env')
+    parser.add_argument('-e', '--episodes', type=int, default=1000,
+                        help='number of training episodes')
     args = parser.parse_args()
     main(args)
